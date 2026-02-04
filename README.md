@@ -17,6 +17,24 @@ Ai-assisted: true
 
 Emails are the official "agent" emails, where available, such as `Claude Code <noreply@anthropic.com>`.
 
+## Installation
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/block/aittributor/main/install.sh | sh
+```
+
+Or to install a specific version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/block/aittributor/main/install.sh | sh -s v0.0.1
+```
+
+To customize the installation directory:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/block/aittributor/main/install.sh | INSTALL_DIR=~/.local/bin sh
+```
+
 ## Example
 
 ```
