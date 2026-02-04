@@ -1,36 +1,34 @@
-# aittributor README
+# Attributor is a prepare-commit-msg hook that adds AI agent attribution to git commits
 
-Congrats, project leads! You got a new project to grow!
+It does this by matching process names against known agents, and working directory against the current git repository.
 
-This stub is meant to help you form a strong community around your work. It's yours to adapt, and may 
-diverge from this initial structure. Just keep the files seeded in this repo, and the rest is yours to evolve! 
+It finds processes in three ways:
 
-## Introduction
+1. First it checks for agent-specific environment variables.
+2. Then it walks its own process ancestry, under the assumption that the git commit was initiated by an agent.
+3. If a known agent is not found, it walks up the process tree and checks all descendants of siblings at each level, looking for an agent working in the same repository.
 
-Orient users to the project here. This is a good place to start with an assumption
-that the user knows very little - so start with the Big Picture and show how this
-project fits into it.
+If an agent is found, it will append the following git trailers to the git commit:
 
-Then maybe a dive into what this project does.
+```
+Co-authored-by: <email>
+Ai-assisted: true
+```
 
-Diagrams and other visuals are helpful here. Perhaps code snippets showing usage.
+Emails are the official "agent" emails, where available, such as `Claude Code <noreply@anthropic.com>`.
 
-Project leads should complete, alongside this `README`:
+## Example
 
-* [CODEOWNERS](./CODEOWNERS) - set project lead(s)
-* [CONTRIBUTING.md](./CONTRIBUTING.md) - Fill out how to: install prereqs, build, test, run, access CI, chat, discuss, file issues
-* [Bug-report.md](.github/ISSUE_TEMPLATE/bug-report.md) - Fill out `Assignees` add codeowners @names
-* [config.yml](.github/ISSUE_TEMPLATE/config.yml) - remove "(/add your discord channel..)" and replace the url with your Discord channel if applicable
+```
+$ aittributor
+Claude Code <noreply@anthropic.com>
+```
 
-The other files in this template repo may be used as-is:
+## Usage with lefthook
 
-* [GOVERNANCE.md](./GOVERNANCE.md)
-* [LICENSE](./LICENSE)
-
-## Project Resources
-
-| Resource                                   | Description                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------ |
-| [CODEOWNERS](./CODEOWNERS)                 | Outlines the project lead(s)                                                   |
-| [GOVERNANCE.md](./GOVERNANCE.md)           | Project governance                                                             |
-| [LICENSE](./LICENSE)                       | Apache License, Version 2.0                                                    |
+```yaml
+prepare-commit-msg:
+  commands:
+    aittributor:
+      run: aittributor {1}
+```
