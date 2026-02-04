@@ -67,6 +67,11 @@ const KNOWN_AGENTS: &[Agent] = &[
         email: "Amazon Q Developer <noreply@amazon.com>",
     },
     Agent {
+        process_names: &["amp"],
+        env_vars: &[],
+        email: "Amp <amp@ampcode.com>",
+    },
+    Agent {
         process_names: &[],
         env_vars: &[("CLINE_ACTIVE", "true")],
         email: "Cline <noreply@cline.bot>",
@@ -288,6 +293,7 @@ mod tests {
         assert!(find_agent_by_name("codex").is_some());
         assert!(find_agent_by_name("copilot-agent").is_some());
         assert!(find_agent_by_name("amazon-q").is_some());
+        assert!(find_agent_by_name("amp").is_some());
         assert!(find_agent_by_name("unknown").is_none());
     }
 
