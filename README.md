@@ -1,4 +1,4 @@
-# Attributor is a prepare-commit-msg hook that adds AI agent attribution to git commits
+# AIttributor is a prepare-commit-msg hook that adds AI agent attribution to git commits
 
 It does this by matching process names against known agents, and working directory against the current git repository.
 
