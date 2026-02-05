@@ -80,6 +80,11 @@ const KNOWN_AGENTS: &[Agent] = &[
         env_vars: &[("CLINE_ACTIVE", "true")],
         email: "Cline <noreply@cline.bot>",
     },
+    Agent {
+        process_names: &["gemini"],
+        env_vars: &[],
+        email: "Gemini <218195315+gemini-cli@users.noreply.github.com>",
+    },
 ];
 
 fn find_agent_by_name(name: &str) -> Option<&'static Agent> {
