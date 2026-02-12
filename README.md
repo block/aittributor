@@ -60,9 +60,4 @@ ln -s /usr/local/bin/aittributor .git/hooks/prepare-commit-msg
 
 ## Breadcrumb fallback
 
-The commit hook relies on detecting a running AI agent process. If the agent exits before you commit, the hook won't find it. As a fallback, aittributor checks agent-specific state files ("breadcrumbs") left behind by agents:
-
-- **Claude Code**: checks `~/.claude/projects/` for recent session files matching the current repo
-- **Codex**: checks `~/.codex/sessions/` for recent session files whose `cwd` is within the current git root (monorepo subdirectories match; sibling repo names like `repo` and `repo2` do not)
-
-Files modified within the last 2 hours are considered recent. No additional setup is required — these directories are created automatically by the agents themselves.
+If the AI agent exits before you commit, aittributor falls back to checking agent-specific state files to detect recently active agents. This only works when state files are available. No additional setup is required. 
