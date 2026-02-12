@@ -1,7 +1,13 @@
+mod agent;
+mod breadcrumbs;
+mod git;
+
 use clap::Parser;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use sysinfo::{Pid, System};
+
+use agent::{Agent, find_agent_by_env, find_agent_for_process};
+use git::{append_trailers, find_git_root};
 
 #[derive(Parser)]
 #[command(name = "aittributor")]
@@ -21,136 +27,6 @@ struct Cli {
     /// Enable debug output
     #[arg(long)]
     debug: bool,
-}
-
-struct Agent {
-    process_names: &'static [&'static str],
-    env_vars: &'static [(&'static str, &'static str)],
-    email: &'static str,
-}
-
-const KNOWN_AGENTS: &[Agent] = &[
-    Agent {
-        process_names: &["claude"],
-        env_vars: &[],
-        email: "Claude Code <noreply@anthropic.com>",
-    },
-    Agent {
-        process_names: &["goose"],
-        env_vars: &[],
-        email: "Goose <opensource@block.xyz>",
-    },
-    Agent {
-        process_names: &["cursor", "cursor-agent"],
-        env_vars: &[],
-        email: "Cursor <noreply@cursor.com>",
-    },
-    Agent {
-        process_names: &["aider"],
-        env_vars: &[],
-        email: "Aider <noreply@aider.chat>",
-    },
-    Agent {
-        process_names: &["windsurf"],
-        env_vars: &[],
-        email: "Windsurf <noreply@codeium.com>",
-    },
-    Agent {
-        process_names: &["codex"],
-        env_vars: &[],
-        email: "Codex <noreply@openai.com>",
-    },
-    Agent {
-        process_names: &["copilot-agent"],
-        env_vars: &[],
-        email: "GitHub Copilot <noreply@github.com>",
-    },
-    Agent {
-        process_names: &["amazon-q", "q"],
-        env_vars: &[],
-        email: "Amazon Q Developer <noreply@amazon.com>",
-    },
-    Agent {
-        process_names: &["amp"],
-        env_vars: &[],
-        email: "Amp <amp@ampcode.com>",
-    },
-    Agent {
-        process_names: &[],
-        env_vars: &[("CLINE_ACTIVE", "true")],
-        email: "Cline <noreply@cline.bot>",
-    },
-    Agent {
-        process_names: &["gemini"],
-        env_vars: &[],
-        email: "Gemini CLI Agent <gemini-cli-agent@google.com>",
-    },
-];
-
-fn find_agent_by_name(name: &str) -> Option<&'static Agent> {
-    let path = Path::new(name);
-    let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(name);
-    let basename_lower = basename.to_lowercase();
-
-    KNOWN_AGENTS.iter().find(|agent| {
-        !agent.process_names.is_empty() && agent.process_names.iter().any(|&pn| basename_lower.contains(pn))
-    })
-}
-
-fn find_agent_by_env() -> Option<&'static Agent> {
-    KNOWN_AGENTS.iter().find(|agent| {
-        !agent.env_vars.is_empty()
-            && agent
-                .env_vars
-                .iter()
-                .all(|(key, value)| std::env::var(key).ok().as_deref() == Some(*value))
-    })
-}
-
-fn find_agent_for_process(process: &sysinfo::Process, debug: bool) -> Option<&'static Agent> {
-    let name = process.name().to_string_lossy();
-    if debug {
-        eprintln!("      Checking process name: {}", name);
-    }
-    if let Some(agent) = find_agent_by_name(&name) {
-        if debug {
-            eprintln!("        ✓ Matched agent: {}", agent.email);
-        }
-        return Some(agent);
-    }
-
-    // Check basename(argv[0])
-    if let Some(arg0) = process.cmd().first() {
-        let arg0_str = arg0.to_string_lossy();
-        if debug {
-            eprintln!("      Checking basename(argv[0]): {}", arg0_str);
-        }
-        if let Some(agent) = find_agent_by_name(&arg0_str) {
-            if debug {
-                eprintln!("        ✓ Matched agent: {}", agent.email);
-            }
-            return Some(agent);
-        }
-    }
-
-    // Check first basename(argv[1:]) that doesn't start with '-'
-    if let Some(arg) = process.cmd().iter().skip(1).find(|arg| {
-        let arg_str = arg.to_string_lossy();
-        !arg_str.starts_with('-')
-    }) {
-        let arg_str = arg.to_string_lossy();
-        if debug {
-            eprintln!("      Checking first non-flag arg from argv[1:]: {}", arg_str);
-        }
-        if let Some(agent) = find_agent_by_name(&arg_str) {
-            if debug {
-                eprintln!("        ✓ Matched agent: {}", agent.email);
-            }
-            return Some(agent);
-        }
-    }
-
-    None
 }
 
 fn walk_ancestry(system: &System, debug: bool) -> Option<&'static Agent> {
@@ -259,66 +135,6 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
     None
 }
 
-fn append_trailers(commit_msg_file: &PathBuf, agent: &Agent, debug: bool) -> std::io::Result<()> {
-    let content = fs::read_to_string(commit_msg_file)?;
-
-    if content.contains("Co-authored-by:") && content.contains(agent.email) {
-        if debug {
-            eprintln!("\n=== Git Command ===");
-            eprintln!("Trailers already present, skipping git interpret-trailers");
-        }
-        return Ok(());
-    }
-
-    let co_authored = format!("Co-authored-by: {}", agent.email);
-
-    if debug {
-        eprintln!("\n=== Git Command ===");
-        eprintln!(
-            "git interpret-trailers --in-place --trailer \"{}\" --if-exists addIfDifferent --trailer \"Ai-assisted: true\" \"{}\"",
-            co_authored,
-            commit_msg_file.display()
-        );
-    }
-
-    let output = std::process::Command::new("git")
-        .arg("interpret-trailers")
-        .arg("--in-place")
-        .arg("--trailer")
-        .arg(&co_authored)
-        .arg("--if-exists")
-        .arg("addIfDifferent")
-        .arg("--trailer")
-        .arg("Ai-assisted: true")
-        .arg(commit_msg_file)
-        .output()?;
-
-    if !output.status.success() {
-        return Err(std::io::Error::other(format!(
-            "git interpret-trailers failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
-    Ok(())
-}
-
-fn find_git_root(start_path: &Path) -> Option<PathBuf> {
-    let mut current = start_path.to_path_buf();
-
-    loop {
-        let git_dir = current.join(".git");
-        if git_dir.exists() {
-            return Some(current);
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return None,
-        }
-    }
-}
-
 fn detect_agent(debug: bool) -> Option<&'static Agent> {
     if debug {
         eprintln!("=== Agent Detection Debug ===");
@@ -345,30 +161,49 @@ fn detect_agent(debug: bool) -> Option<&'static Agent> {
     walk_ancestry_and_descendants(&system, &repo_path, debug)
 }
 
+fn breadcrumb_fallback(debug: bool) -> Vec<&'static Agent> {
+    let current_dir = std::env::current_dir().unwrap_or_default();
+    let repo_path = find_git_root(&current_dir).unwrap_or(current_dir);
+    breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, debug)
+}
+
 fn main() {
     let cli = Cli::parse();
 
     let Some(commit_msg_file) = cli.commit_msg_file else {
-        match detect_agent(cli.debug) {
-            Some(agent) => println!("{}", agent.email),
-            None => {
+        if let Some(agent) = detect_agent(cli.debug) {
+            println!("{}", agent.email);
+        } else {
+            let agents = breadcrumb_fallback(cli.debug);
+            if agents.is_empty() {
                 eprintln!("No agent found");
                 std::process::exit(1);
+            }
+            for agent in agents {
+                println!("{}", agent.email);
             }
         }
         return;
     };
 
-    if let Some(agent) = detect_agent(cli.debug)
-        && let Err(e) = append_trailers(&commit_msg_file, agent, cli.debug)
-    {
-        eprintln!("aittributor: failed to append trailers: {}", e);
+    if let Some(agent) = detect_agent(cli.debug) {
+        if let Err(e) = append_trailers(&commit_msg_file, agent, cli.debug) {
+            eprintln!("aittributor: failed to append trailers: {}", e);
+        }
+    } else {
+        for agent in breadcrumb_fallback(cli.debug) {
+            if let Err(e) = append_trailers(&commit_msg_file, agent, cli.debug) {
+                eprintln!("aittributor: failed to append trailers: {}", e);
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent::{KNOWN_AGENTS, find_agent_by_name};
+    use std::fs;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
