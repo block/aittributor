@@ -10,28 +10,6 @@ const CUTOFF_SECS: u64 = 2 * 60 * 60; // 2 hours as a rough approximation
 /// Maximum number of lines to read from a session file when looking for "cwd".
 const MAX_LINES_TO_SCAN: usize = 5;
 
-struct BreadcrumbSource {
-    /// Prefix to match against Agent.email in KNOWN_AGENTS
-    email_prefix: &'static str,
-    /// Base directory relative to $HOME (e.g. ".claude/projects")
-    base_dir: &'static str,
-    /// File extension to look for (without dot)
-    file_ext: &'static str,
-}
-
-const SOURCES: &[BreadcrumbSource] = &[
-    BreadcrumbSource {
-        email_prefix: "Claude Code",
-        base_dir: ".claude/projects",
-        file_ext: "jsonl",
-    },
-    BreadcrumbSource {
-        email_prefix: "Codex",
-        base_dir: ".codex/sessions",
-        file_ext: "jsonl",
-    },
-];
-
 fn home_dir() -> Option<String> {
     std::env::var("HOME").ok()
 }
@@ -44,10 +22,6 @@ fn is_recent(path: &Path, cutoff: SystemTime) -> bool {
 
 fn has_extension(path: &Path, ext: &str) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some(ext)
-}
-
-fn find_agent(email_prefix: &str) -> Option<&'static Agent> {
-    KNOWN_AGENTS.iter().find(|a| a.email.starts_with(email_prefix))
 }
 
 fn extract_cwd_from_json(line: &str) -> Option<&str> {
@@ -117,35 +91,41 @@ fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: S
 }
 
 fn check_source(
-    source: &BreadcrumbSource,
+    agent: &'static Agent,
     repo_path: &Path,
     cutoff: SystemTime,
     debug: bool,
-) -> Option<&'static Agent> {
-    let home = home_dir()?;
-    let base = Path::new(&home).join(source.base_dir);
+) -> bool {
+    let breadcrumb_dir = match agent.breadcrumb_dir {
+        Some(d) => d,
+        None => return false,
+    };
+    let breadcrumb_ext = agent.breadcrumb_ext.unwrap_or("jsonl");
+
+    let home = match home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    let base = Path::new(&home).join(breadcrumb_dir);
 
     if debug {
-        eprintln!("  {} breadcrumb dir: {}", source.email_prefix, base.display());
+        eprintln!("  {} breadcrumb dir: {}", agent.email, base.display());
     }
 
     if !base.is_dir() {
         if debug {
             eprintln!("    Not found");
         }
-        return None;
+        return false;
     }
 
-    let matched = find_session_file_with_cwd(&base, source.file_ext, repo_path, cutoff, debug);
+    let matched = find_session_file_with_cwd(&base, breadcrumb_ext, repo_path, cutoff, debug);
 
-    if matched {
-        find_agent(source.email_prefix)
-    } else {
-        if debug {
-            eprintln!("    No match for {}", source.email_prefix);
-        }
-        None
+    if !matched && debug {
+        eprintln!("    No match for {}", agent.email);
     }
+
+    matched
 }
 
 pub fn detect_agents_from_breadcrumbs(repo_path: &Path, debug: bool) -> Vec<&'static Agent> {
@@ -156,8 +136,8 @@ pub fn detect_agents_from_breadcrumbs(repo_path: &Path, debug: bool) -> Vec<&'st
         eprintln!("\n=== Breadcrumb Fallback ===");
     }
 
-    for source in SOURCES {
-        if let Some(agent) = check_source(source, repo_path, cutoff, debug) {
+    for agent in KNOWN_AGENTS {
+        if check_source(agent, repo_path, cutoff, debug) {
             agents.push(agent);
         }
     }
