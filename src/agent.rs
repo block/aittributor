@@ -4,6 +4,8 @@ pub struct Agent {
     pub process_names: &'static [&'static str],
     pub env_vars: &'static [(&'static str, &'static str)],
     pub email: &'static str,
+    pub breadcrumb_dir: Option<&'static str>,
+    pub breadcrumb_ext: Option<&'static str>,
 }
 
 pub const KNOWN_AGENTS: &[Agent] = &[
@@ -11,56 +13,78 @@ pub const KNOWN_AGENTS: &[Agent] = &[
         process_names: &["claude"],
         env_vars: &[],
         email: "Claude Code <noreply@anthropic.com>",
+        breadcrumb_dir: Some(".claude/projects"),
+        breadcrumb_ext: Some("jsonl"),
     },
     Agent {
         process_names: &["goose"],
         env_vars: &[],
         email: "Goose <opensource@block.xyz>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["cursor", "cursor-agent"],
         env_vars: &[],
         email: "Cursor <noreply@cursor.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["aider"],
         env_vars: &[],
         email: "Aider <noreply@aider.chat>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["windsurf"],
         env_vars: &[],
         email: "Windsurf <noreply@codeium.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["codex"],
         env_vars: &[],
         email: "Codex <noreply@openai.com>",
+        breadcrumb_dir: Some(".codex/sessions"),
+        breadcrumb_ext: Some("jsonl"),
     },
     Agent {
         process_names: &["copilot-agent"],
         env_vars: &[],
         email: "GitHub Copilot <noreply@github.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["amazon-q", "q"],
         env_vars: &[],
         email: "Amazon Q Developer <noreply@amazon.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["amp"],
         env_vars: &[],
         email: "Amp <amp@ampcode.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &[],
         env_vars: &[("CLINE_ACTIVE", "true")],
         email: "Cline <noreply@cline.bot>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
     Agent {
         process_names: &["gemini"],
         env_vars: &[],
         email: "Gemini CLI Agent <gemini-cli-agent@google.com>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
     },
 ];
 
