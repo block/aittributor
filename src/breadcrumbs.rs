@@ -90,12 +90,7 @@ fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: S
     false
 }
 
-fn check_source(
-    agent: &'static Agent,
-    repo_path: &Path,
-    cutoff: SystemTime,
-    debug: bool,
-) -> bool {
+fn check_source(agent: &'static Agent, repo_path: &Path, cutoff: SystemTime, debug: bool) -> bool {
     let breadcrumb_dir = match agent.breadcrumb_dir {
         Some(d) => d,
         None => return false,
