@@ -248,6 +248,28 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
+    fn test_append_trailers_skips_existing_email_different_name() {
+        // Simulate Claude Code already having added a trailer with a different display name
+        // but the same email address (e.g. "Claude Opus 4.6 <noreply@anthropic.com>")
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "Initial commit").unwrap();
+        writeln!(file).unwrap();
+        writeln!(file, "Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>").unwrap();
+
+        let agent = &KNOWN_AGENTS[0]; // Claude Code <noreply@anthropic.com>
+        append_trailers(&file.path().to_path_buf(), agent, false).unwrap();
+
+        let content = fs::read_to_string(file.path()).unwrap();
+        // Should NOT have added a second Co-authored-by for noreply@anthropic.com
+        let co_author_count = content.matches("noreply@anthropic.com").count();
+        assert_eq!(
+            co_author_count, 1,
+            "Should not add duplicate trailer for same email address, found {} occurrences",
+            co_author_count
+        );
+    }
+
+    #[test]
     fn test_dedup_agents_removes_duplicates() {
         let claude = &KNOWN_AGENTS[0]; // Claude Code
         let amp = &KNOWN_AGENTS[8]; // Amp
