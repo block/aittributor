@@ -12,7 +12,7 @@ use agent::Agent;
 use git::{append_trailers, find_git_root};
 
 #[derive(Parser)]
-#[command(name = "aittributor")]
+#[command(name = "aittributor", version)]
 #[command(about = "Git prepare-commit-msg hook that adds AI agent attribution")]
 struct Cli {
     /// Path to the commit message file
