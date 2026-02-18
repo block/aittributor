@@ -3,8 +3,11 @@ mod breadcrumbs;
 mod git;
 
 use clap::Parser;
+use std::collections::HashMap;
 use std::path::PathBuf;
-use sysinfo::{Pid, System};
+use std::sync::mpsc;
+use std::time::Duration;
+use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
 
 use agent::{Agent, find_agent_by_env, find_agent_for_process};
 use git::{append_trailers, find_git_root};
@@ -55,7 +58,13 @@ fn walk_ancestry(system: &System, debug: bool) -> Option<&'static Agent> {
     None
 }
 
-fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug: bool) -> Option<&'static Agent> {
+fn check_process_tree(
+    system: &System,
+    root_pid: Pid,
+    repo_path: &PathBuf,
+    children: &HashMap<Pid, Vec<Pid>>,
+    debug: bool,
+) -> Option<&'static Agent> {
     let mut queue = std::collections::VecDeque::new();
     let mut visited = std::collections::HashSet::new();
 
@@ -85,10 +94,8 @@ fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug
             return Some(agent);
         }
 
-        for child in system.processes().values() {
-            if child.parent() == Some(pid) {
-                queue.push_back(child.pid());
-            }
+        if let Some(child_pids) = children.get(&pid) {
+            queue.extend(child_pids);
         }
     }
 
@@ -102,6 +109,16 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
     if debug {
         eprintln!("\nWalking ancestry and descendants...");
     }
+
+    let children: HashMap<Pid, Vec<Pid>> = {
+        let mut map: HashMap<Pid, Vec<Pid>> = HashMap::new();
+        for (pid, process) in system.processes() {
+            if let Some(parent) = process.parent() {
+                map.entry(parent).or_default().push(*pid);
+            }
+        }
+        map
+    };
 
     loop {
         let process = system.process(current_pid)?;
@@ -119,13 +136,11 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
             eprintln!("  Checking siblings of PID {} (parent: {})", current_pid, parent_pid);
         }
 
-        for sibling in system.processes().values() {
-            if sibling.parent() != Some(parent_pid) {
-                continue;
-            }
-
-            if let Some(agent) = check_process_tree(system, sibling.pid(), repo_path, debug) {
-                return Some(agent);
+        if let Some(sibling_pids) = children.get(&parent_pid) {
+            for &sibling_pid in sibling_pids {
+                if let Some(agent) = check_process_tree(system, sibling_pid, repo_path, &children, debug) {
+                    return Some(agent);
+                }
             }
         }
 
@@ -152,7 +167,13 @@ fn detect_agent(debug: bool) -> Option<&'static Agent> {
     if debug {
         eprintln!("  Repository path: {}", repo_path.display());
     }
-    let system = System::new_all();
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(
+            ProcessRefreshKind::new()
+                .with_cmd(UpdateKind::Always)
+                .with_cwd(UpdateKind::Always),
+        ),
+    );
 
     if let Some(agent) = walk_ancestry(&system, debug) {
         return Some(agent);
@@ -167,9 +188,7 @@ fn breadcrumb_fallback(debug: bool) -> Vec<&'static Agent> {
     breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, debug)
 }
 
-fn main() {
-    let cli = Cli::parse();
-
+fn run(cli: Cli) {
     let Some(commit_msg_file) = cli.commit_msg_file else {
         if let Some(agent) = detect_agent(cli.debug) {
             println!("{}", agent.email);
@@ -196,6 +215,20 @@ fn main() {
                 eprintln!("aittributor: failed to append trailers: {}", e);
             }
         }
+    }
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        run(cli);
+        let _ = tx.send(());
+    });
+
+    if rx.recv_timeout(Duration::from_secs(1)).is_err() {
+        eprintln!("aittributor: timed out, skipping attribution. Check https://github.com/block/aittributor/issues");
     }
 }
 
