@@ -15,4 +15,4 @@ Use Conventional Commits for commit messages and PR titles. CI lints PR titles.
 
 ## Maintenance
 
-If this file misleads you or you hit a surprising behavior, update it.
+You may update this file to correct mistakes.
