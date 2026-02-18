@@ -3,7 +3,6 @@ mod breadcrumbs;
 mod git;
 
 use clap::Parser;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -58,13 +57,7 @@ fn walk_ancestry(system: &System, debug: bool) -> Option<&'static Agent> {
     None
 }
 
-fn check_process_tree(
-    system: &System,
-    root_pid: Pid,
-    repo_path: &PathBuf,
-    children: &HashMap<Pid, Vec<Pid>>,
-    debug: bool,
-) -> Option<&'static Agent> {
+fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug: bool) -> Option<&'static Agent> {
     let mut queue = std::collections::VecDeque::new();
     let mut visited = std::collections::HashSet::new();
 
@@ -94,8 +87,10 @@ fn check_process_tree(
             return Some(agent);
         }
 
-        if let Some(child_pids) = children.get(&pid) {
-            queue.extend(child_pids);
+        for child in system.processes().values() {
+            if child.parent() == Some(pid) {
+                queue.push_back(child.pid());
+            }
         }
     }
 
@@ -109,16 +104,6 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
     if debug {
         eprintln!("\nWalking ancestry and descendants...");
     }
-
-    let children: HashMap<Pid, Vec<Pid>> = {
-        let mut map: HashMap<Pid, Vec<Pid>> = HashMap::new();
-        for (pid, process) in system.processes() {
-            if let Some(parent) = process.parent() {
-                map.entry(parent).or_default().push(*pid);
-            }
-        }
-        map
-    };
 
     loop {
         let process = system.process(current_pid)?;
@@ -136,11 +121,13 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
             eprintln!("  Checking siblings of PID {} (parent: {})", current_pid, parent_pid);
         }
 
-        if let Some(sibling_pids) = children.get(&parent_pid) {
-            for &sibling_pid in sibling_pids {
-                if let Some(agent) = check_process_tree(system, sibling_pid, repo_path, &children, debug) {
-                    return Some(agent);
-                }
+        for sibling in system.processes().values() {
+            if sibling.parent() != Some(parent_pid) {
+                continue;
+            }
+
+            if let Some(agent) = check_process_tree(system, sibling.pid(), repo_path, debug) {
+                return Some(agent);
             }
         }
 
