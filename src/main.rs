@@ -4,7 +4,9 @@ mod git;
 
 use clap::Parser;
 use std::path::PathBuf;
-use sysinfo::{Pid, System};
+use std::sync::mpsc;
+use std::time::Duration;
+use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
 
 use agent::{Agent, find_agent_by_env, find_agent_for_process};
 use git::{append_trailers, find_git_root};
@@ -152,7 +154,13 @@ fn detect_agent(debug: bool) -> Option<&'static Agent> {
     if debug {
         eprintln!("  Repository path: {}", repo_path.display());
     }
-    let system = System::new_all();
+    let system = System::new_with_specifics(
+        RefreshKind::new().with_processes(
+            ProcessRefreshKind::new()
+                .with_cmd(UpdateKind::Always)
+                .with_cwd(UpdateKind::Always),
+        ),
+    );
 
     if let Some(agent) = walk_ancestry(&system, debug) {
         return Some(agent);
@@ -167,9 +175,7 @@ fn breadcrumb_fallback(debug: bool) -> Vec<&'static Agent> {
     breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, debug)
 }
 
-fn main() {
-    let cli = Cli::parse();
-
+fn run(cli: Cli) {
     let Some(commit_msg_file) = cli.commit_msg_file else {
         if let Some(agent) = detect_agent(cli.debug) {
             println!("{}", agent.email);
@@ -196,6 +202,20 @@ fn main() {
                 eprintln!("aittributor: failed to append trailers: {}", e);
             }
         }
+    }
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        run(cli);
+        let _ = tx.send(());
+    });
+
+    if rx.recv_timeout(Duration::from_secs(1)).is_err() {
+        eprintln!("aittributor: timed out, skipping attribution. Check https://github.com/block/aittributor/issues");
     }
 }
 
