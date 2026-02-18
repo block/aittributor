@@ -88,68 +88,70 @@ pub const KNOWN_AGENTS: &[Agent] = &[
     },
 ];
 
-pub fn find_agent_by_name(name: &str) -> Option<&'static Agent> {
-    let path = Path::new(name);
-    let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(name);
-    let basename_lower = basename.to_lowercase();
+impl Agent {
+    pub fn find_by_name(name: &str) -> Option<&'static Agent> {
+        let path = Path::new(name);
+        let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or(name);
+        let basename_lower = basename.to_lowercase();
 
-    KNOWN_AGENTS.iter().find(|agent| {
-        !agent.process_names.is_empty() && agent.process_names.iter().any(|&pn| basename_lower.contains(pn))
-    })
-}
-
-pub fn find_agent_by_env() -> Option<&'static Agent> {
-    KNOWN_AGENTS.iter().find(|agent| {
-        !agent.env_vars.is_empty()
-            && agent
-                .env_vars
-                .iter()
-                .all(|(key, value)| std::env::var(key).ok().as_deref() == Some(*value))
-    })
-}
-
-pub fn find_agent_for_process(process: &sysinfo::Process, debug: bool) -> Option<&'static Agent> {
-    let name = process.name().to_string_lossy();
-    if debug {
-        eprintln!("      Checking process name: {}", name);
-    }
-    if let Some(agent) = find_agent_by_name(&name) {
-        if debug {
-            eprintln!("        ✓ Matched agent: {}", agent.email);
-        }
-        return Some(agent);
+        KNOWN_AGENTS.iter().find(|agent| {
+            !agent.process_names.is_empty() && agent.process_names.iter().any(|&pn| basename_lower.contains(pn))
+        })
     }
 
-    // Check basename(argv[0])
-    if let Some(arg0) = process.cmd().first() {
-        let arg0_str = arg0.to_string_lossy();
+    pub fn find_by_env() -> Option<&'static Agent> {
+        KNOWN_AGENTS.iter().find(|agent| {
+            !agent.env_vars.is_empty()
+                && agent
+                    .env_vars
+                    .iter()
+                    .all(|(key, value)| std::env::var(key).ok().as_deref() == Some(*value))
+        })
+    }
+
+    pub fn find_for_process(process: &sysinfo::Process, debug: bool) -> Option<&'static Agent> {
+        let name = process.name().to_string_lossy();
         if debug {
-            eprintln!("      Checking basename(argv[0]): {}", arg0_str);
+            eprintln!("      Checking process name: {}", name);
         }
-        if let Some(agent) = find_agent_by_name(&arg0_str) {
+        if let Some(agent) = Self::find_by_name(&name) {
             if debug {
                 eprintln!("        ✓ Matched agent: {}", agent.email);
             }
             return Some(agent);
         }
-    }
 
-    // Check first basename(argv[1:]) that doesn't start with '-'
-    if let Some(arg) = process.cmd().iter().skip(1).find(|arg| {
-        let arg_str = arg.to_string_lossy();
-        !arg_str.starts_with('-')
-    }) {
-        let arg_str = arg.to_string_lossy();
-        if debug {
-            eprintln!("      Checking first non-flag arg from argv[1:]: {}", arg_str);
-        }
-        if let Some(agent) = find_agent_by_name(&arg_str) {
+        // Check basename(argv[0])
+        if let Some(arg0) = process.cmd().first() {
+            let arg0_str = arg0.to_string_lossy();
             if debug {
-                eprintln!("        ✓ Matched agent: {}", agent.email);
+                eprintln!("      Checking basename(argv[0]): {}", arg0_str);
             }
-            return Some(agent);
+            if let Some(agent) = Self::find_by_name(&arg0_str) {
+                if debug {
+                    eprintln!("        ✓ Matched agent: {}", agent.email);
+                }
+                return Some(agent);
+            }
         }
-    }
 
-    None
+        // Check first basename(argv[1:]) that doesn't start with '-'
+        if let Some(arg) = process.cmd().iter().skip(1).find(|arg| {
+            let arg_str = arg.to_string_lossy();
+            !arg_str.starts_with('-')
+        }) {
+            let arg_str = arg.to_string_lossy();
+            if debug {
+                eprintln!("      Checking first non-flag arg from argv[1:]: {}", arg_str);
+            }
+            if let Some(agent) = Self::find_by_name(&arg_str) {
+                if debug {
+                    eprintln!("        ✓ Matched agent: {}", agent.email);
+                }
+                return Some(agent);
+            }
+        }
+
+        None
+    }
 }

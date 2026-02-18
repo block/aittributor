@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
 
-use agent::{Agent, find_agent_by_env, find_agent_for_process};
+use agent::Agent;
 use git::{append_trailers, find_git_root};
 
 #[derive(Parser)]
@@ -42,7 +42,7 @@ fn walk_ancestry(system: &System, debug: bool) -> Option<&'static Agent> {
         if debug {
             eprintln!("  PID {}: {:?}", current_pid, process.name());
         }
-        if let Some(agent) = find_agent_for_process(process, debug) {
+        if let Some(agent) = Agent::find_for_process(process, debug) {
             return Some(agent);
         }
 
@@ -77,7 +77,7 @@ fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug
             eprintln!("    Checking PID {}: {:?}", pid, process.name());
         }
 
-        if let Some(agent) = find_agent_for_process(process, debug)
+        if let Some(agent) = Agent::find_for_process(process, debug)
             && let Some(cwd) = process.cwd()
             && cwd.starts_with(repo_path)
         {
@@ -142,7 +142,7 @@ fn detect_agent(debug: bool) -> Option<&'static Agent> {
         eprintln!("=== Agent Detection Debug ===");
         eprintln!("\nChecking environment variables...");
     }
-    if let Some(agent) = find_agent_by_env() {
+    if let Some(agent) = Agent::find_by_env() {
         if debug {
             eprintln!("  ✓ Found agent via env: {}", agent.email);
         }
@@ -222,28 +222,28 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent::{KNOWN_AGENTS, find_agent_by_name};
+    use agent::KNOWN_AGENTS;
     use std::fs;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]
     fn test_find_agent_by_name() {
-        assert!(find_agent_by_name("claude").is_some());
-        assert!(find_agent_by_name("Claude").is_some());
-        assert!(find_agent_by_name("claude-code").is_some());
-        assert!(find_agent_by_name("cursor").is_some());
-        assert!(find_agent_by_name("cursor-agent").is_some());
-        assert!(find_agent_by_name("aider").is_some());
-        assert!(find_agent_by_name("windsurf").is_some());
-        assert!(find_agent_by_name("codex").is_some());
-        assert!(find_agent_by_name("copilot-agent").is_some());
-        assert!(find_agent_by_name("amazon-q").is_some());
-        assert!(find_agent_by_name("amp").is_some());
-        assert!(find_agent_by_name("/opt/homebrew/bin/amp").is_some());
-        assert!(find_agent_by_name("gemini").is_some());
-        assert!(find_agent_by_name("goose").is_some());
-        assert!(find_agent_by_name("unknown").is_none());
+        assert!(Agent::find_by_name("claude").is_some());
+        assert!(Agent::find_by_name("Claude").is_some());
+        assert!(Agent::find_by_name("claude-code").is_some());
+        assert!(Agent::find_by_name("cursor").is_some());
+        assert!(Agent::find_by_name("cursor-agent").is_some());
+        assert!(Agent::find_by_name("aider").is_some());
+        assert!(Agent::find_by_name("windsurf").is_some());
+        assert!(Agent::find_by_name("codex").is_some());
+        assert!(Agent::find_by_name("copilot-agent").is_some());
+        assert!(Agent::find_by_name("amazon-q").is_some());
+        assert!(Agent::find_by_name("amp").is_some());
+        assert!(Agent::find_by_name("/opt/homebrew/bin/amp").is_some());
+        assert!(Agent::find_by_name("gemini").is_some());
+        assert!(Agent::find_by_name("goose").is_some());
+        assert!(Agent::find_by_name("unknown").is_none());
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
         unsafe {
             std::env::set_var("CLINE_ACTIVE", "true");
         }
-        let agent = find_agent_by_env();
+        let agent = Agent::find_by_env();
         assert!(agent.is_some());
         assert!(agent.unwrap().email.contains("Cline"));
         unsafe {
