@@ -14,9 +14,17 @@ fmt:
 build:
     cargo build --release
 
+# Build and run aittributor
+run *ARGS:
+    ./scripts/aittributor {{ARGS}}
+
 # Test the project
 test:
     cargo test --all-features
+
+# Run a single test by name
+test-one NAME:
+    cargo test {{NAME}} --all-features
 
 # Generate release notes from git log since previous tag
 release-notes tag="":
