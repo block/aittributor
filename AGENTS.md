@@ -1,13 +1,18 @@
-This is a Rust project.
+This is a Rust project. Hermit manages toolchains, Just manages commands.
 
-The script ./scripts/aittributor is a convenience script that compiles and executes aittributor. ALWAYS use this to run, NEVER manually compile and run.
+Run `just` to see all available commands. Use `just run` to build and run — NEVER manually compile and run. Use only libraries already in Cargo.toml.
 
-We use:
-- Hermit to manage toolchains and tools.
-- Just for command running.
+README.md describes the design of this command-line tool. ALWAYS keep it up to date with features.
 
-Use the libraries already added in @Cargo.toml.
+## Commits and PRs
 
-@README.md describes the design of this command-line tool.
+Use Conventional Commits for commit messages and PR titles. CI lints PR titles.
 
-ALWAYS keep the README up to date with features.
+## Gotchas
+
+- Consolidate all agent data into `KNOWN_AGENTS` in `src/agent.rs`.
+- This tool runs on every commit — keep it fast (1-second hard timeout).
+
+## Maintenance
+
+You may update this file to correct mistakes.
