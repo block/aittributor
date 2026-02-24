@@ -86,6 +86,13 @@ pub const KNOWN_AGENTS: &[Agent] = &[
         breadcrumb_dir: None,
         breadcrumb_ext: None,
     },
+    Agent {
+        process_names: &["firebender"],
+        env_vars: &[],
+        email: "Firebender <noreply@firebender.dev>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
+    },
 ];
 
 impl Agent {
