@@ -26,7 +26,7 @@ pub const KNOWN_AGENTS: &[Agent] = &[
     Agent {
         process_names: &["cursor", "cursor-agent"],
         env_vars: &[],
-        email: "Cursor <noreply@cursor.com>",
+        email: "Cursor <cursoragent@cursor.com>",
         breadcrumb_dir: None,
         breadcrumb_ext: None,
     },
