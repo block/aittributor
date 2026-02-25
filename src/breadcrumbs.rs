@@ -271,21 +271,17 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, r#"{{"cwd":"/Users/foo/myrepo"}}"#).unwrap();
 
-        assert!(find_session_file_with_cwd(
-            dir.path(),
-            "jsonl",
-            Path::new("/Users/foo/myrepo"),
-            cutoff,
-            false
-        ));
+        assert_eq!(
+            find_session_file_with_cwd(dir.path(), "jsonl", Path::new("/Users/foo/myrepo"), cutoff, false),
+            true,
+            "Should detect Cursor breadcrumb for matching repo"
+        );
 
-        assert!(!find_session_file_with_cwd(
-            dir.path(),
-            "jsonl",
-            Path::new("/Users/bar/other"),
-            cutoff,
-            false
-        ));
+        assert_eq!(
+            find_session_file_with_cwd(dir.path(), "jsonl", Path::new("/Users/bar/other"), cutoff, false),
+            false,
+            "Should not match breadcrumb against a different repo"
+        );
     }
 
     #[test]
