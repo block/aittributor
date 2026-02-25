@@ -27,8 +27,8 @@ pub const KNOWN_AGENTS: &[Agent] = &[
         process_names: &["cursor", "cursor-agent"],
         env_vars: &[],
         email: "Cursor <cursoragent@cursor.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        breadcrumb_dir: Some(".cursor/attribution"),
+        breadcrumb_ext: Some("jsonl"),
     },
     Agent {
         process_names: &["aider"],

@@ -263,6 +263,32 @@ mod tests {
     }
 
     #[test]
+    fn test_cursor_breadcrumb_format() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let cutoff = SystemTime::now() - std::time::Duration::from_secs(10);
+
+        let path = dir.path().join("_Users_foo_myrepo.jsonl");
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"cwd":"/Users/foo/myrepo"}}"#).unwrap();
+
+        assert!(find_session_file_with_cwd(
+            dir.path(),
+            "jsonl",
+            Path::new("/Users/foo/myrepo"),
+            cutoff,
+            false
+        ));
+
+        assert!(!find_session_file_with_cwd(
+            dir.path(),
+            "jsonl",
+            Path::new("/Users/bar/other"),
+            cutoff,
+            false
+        ));
+    }
+
+    #[test]
     fn test_find_session_file_with_cwd_matches_monorepo_sibling_subdir() {
         let dir = tempfile::TempDir::new().unwrap();
         let cutoff = SystemTime::now() - std::time::Duration::from_secs(10);
