@@ -86,6 +86,13 @@ pub const KNOWN_AGENTS: &[Agent] = &[
         breadcrumb_dir: None,
         breadcrumb_ext: None,
     },
+    Agent {
+        process_names: &["pi"],
+        env_vars: &[],
+        email: "Pi <noreply@pi.dev>",
+        breadcrumb_dir: Some(".pi/agent/sessions"),
+        breadcrumb_ext: Some("jsonl"),
+    },
 ];
 
 impl Agent {
