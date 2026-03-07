@@ -7,7 +7,7 @@ It finds agents in four ways:
 1. It checks for agent-specific environment variables.
 2. It walks its own process ancestry, under the assumption that the git commit was initiated by an agent.
 3. It walks up the process tree and checks all descendants of siblings at each level, looking for agents working in the same repository.
-4. It checks agent-specific state files ("breadcrumbs") to determine if an agent was recently active in this repo (e.g. `~/.claude/projects/`, `~/.codex/sessions/`).
+4. It checks agent-specific state files ("breadcrumbs") to determine if an agent was recently active in this repo (e.g. `~/.claude/projects/`, `~/.codex/sessions/`, `~/.pi/agent/sessions/`).
 
 Multiple agents can be attributed in a single commit. Results are deduplicated by email address.
 
@@ -62,7 +62,7 @@ ln -s /usr/local/bin/aittributor .git/hooks/prepare-commit-msg
 
 ## Known limitations
 
-**Process detection is not always possible.** Agents may exit before the commit runs, or use process names that don't match (e.g. Electron-based desktop apps). When process scanning fails, aittributor falls back to agent session history, checking state files for recent activity in the same repo. This fallback only works for agents that write state files (currently Claude and Codex), and it cannot distinguish between an agent that wrote the code being committed and one that was only used for research. The result is a bias toward over-attribution, which is a deliberate tradeoff as undercounting real AI usage is harder to correct after the fact than occasional overcounting.
+**Process detection is not always possible.** Agents may exit before the commit runs, or use process names that don't match (e.g. Electron-based desktop apps). When process scanning fails, aittributor falls back to agent session history, checking state files for recent activity in the same repo. This fallback only works for agents that write scannable state files (currently Claude, Codex, Copilot CLI, and Pi). Some agents like OpenCode store sessions in SQLite, which is not yet supported by the breadcrumb scanner, and it cannot distinguish between an agent that wrote the code being committed and one that was only used for research. The result is a bias toward over-attribution, which is a deliberate tradeoff as undercounting real AI usage is harder to correct after the fact than occasional overcounting.
 
 **Agent-initiated commits are the most reliable.** Attribution is most accurate when the agent itself runs `git commit`. Manual commits while an agent session is open (or recently closed) are the main source of attribution that may not reflect actual code contribution.
 
