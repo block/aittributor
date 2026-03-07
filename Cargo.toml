@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-sysinfo = "0.32"
+sysinfo = "0.38"
 whoami = "2.1.0"
 
 [dev-dependencies]
