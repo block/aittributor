@@ -97,6 +97,13 @@ pub const KNOWN_AGENTS: &[Agent] = &[
         email: "opencode <noreply@opencode.ai>",
         ..Agent::default()
     },
+    Agent {
+        process_names: &["opencode"],
+        env_vars: &[],
+        email: "OpenCode <noreply@opencode.ai>",
+        breadcrumb_dir: None,
+        breadcrumb_ext: None,
+    },
 ];
 
 impl Agent {

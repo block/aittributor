@@ -316,6 +316,7 @@ mod tests {
         assert!(Agent::find_by_name("/opt/homebrew/bin/amp").is_some());
         assert!(Agent::find_by_name("gemini").is_some());
         assert!(Agent::find_by_name("goose").is_some());
+        assert!(Agent::find_by_name("opencode").is_some());
         assert!(Agent::find_by_name("unknown").is_none());
     }
 
