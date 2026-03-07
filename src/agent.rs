@@ -6,89 +6,113 @@ pub struct Agent {
     pub email: &'static str,
     pub breadcrumb_dir: Option<&'static str>,
     pub breadcrumb_ext: Option<&'static str>,
+    /// When true, process_names must match the basename exactly (not as a substring).
+    /// Use for short names like "pi" that would otherwise false-positive on "pipefail" etc.
+    pub exact_process_match: bool,
 }
 
 pub const KNOWN_AGENTS: &[Agent] = &[
     Agent {
         process_names: &["claude"],
-        env_vars: &[],
         email: "Claude Code <noreply@anthropic.com>",
         breadcrumb_dir: Some(".claude/projects"),
         breadcrumb_ext: Some("jsonl"),
+        ..Agent::default()
     },
     Agent {
         process_names: &["goose"],
-        env_vars: &[],
         email: "Goose <opensource@block.xyz>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
         process_names: &["cursor", "cursor-agent"],
-        env_vars: &[],
         email: "Cursor <cursoragent@cursor.com>",
         breadcrumb_dir: Some(".cursor/attribution"),
         breadcrumb_ext: Some("jsonl"),
+        ..Agent::default()
     },
     Agent {
         process_names: &["aider"],
-        env_vars: &[],
         email: "Aider <noreply@aider.chat>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
         process_names: &["windsurf"],
-        env_vars: &[],
         email: "Windsurf <noreply@codeium.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
         process_names: &["codex"],
-        env_vars: &[],
         email: "Codex <noreply@openai.com>",
         breadcrumb_dir: Some(".codex/sessions"),
         breadcrumb_ext: Some("jsonl"),
+        ..Agent::default()
     },
     Agent {
         process_names: &["copilot-agent"],
-        env_vars: &[],
         email: "GitHub Copilot <noreply@github.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
+    },
+    // Copilot CLI is a separate terminal agent from the VS Code extension (copilot-agent above).
+    // Must appear after copilot-agent since find_by_name uses contains() and "copilot" would
+    // otherwise shadow the more specific "copilot-agent" match.
+    Agent {
+        process_names: &["copilot"],
+        email: "Copilot <223556219+Copilot@users.noreply.github.com>",
+        // Sessions stored as JSONL event logs in ~/.copilot/session-state/{session-id}/events.jsonl
+        breadcrumb_dir: Some(".copilot/session-state"),
+        breadcrumb_ext: Some("jsonl"),
+        ..Agent::default()
     },
     Agent {
         process_names: &["amazon-q"],
-        env_vars: &[],
         email: "Amazon Q Developer <noreply@amazon.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
         process_names: &["amp"],
-        env_vars: &[],
         email: "Amp <amp@ampcode.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
-        process_names: &[],
         env_vars: &[("CLINE_ACTIVE", "true")],
         email: "Cline <noreply@cline.bot>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
     },
     Agent {
         process_names: &["gemini"],
-        env_vars: &[],
         email: "Gemini CLI Agent <gemini-cli-agent@google.com>",
-        breadcrumb_dir: None,
-        breadcrumb_ext: None,
+        ..Agent::default()
+    },
+    Agent {
+        process_names: &["pi"],
+        email: "Pi <noreply@pi.dev>",
+        breadcrumb_dir: Some(".pi/agent/sessions"),
+        breadcrumb_ext: Some("jsonl"),
+        exact_process_match: true,
+        ..Agent::default()
+    },
+    // TODO: OpenCode sessions are stored in SQLite (~/.local/share/opencode/opencode.db),
+    // not flat files. Breadcrumb scanning would require a new SQLite-based strategy.
+    Agent {
+        process_names: &["opencode"],
+        email: "opencode <noreply@opencode.ai>",
+        ..Agent::default()
     },
 ];
 
 impl Agent {
+    const fn default() -> Self {
+        Agent {
+            process_names: &[],
+            env_vars: &[],
+            email: "",
+            breadcrumb_dir: None,
+            breadcrumb_ext: None,
+            exact_process_match: false,
+        }
+    }
+
     /// Extract the bare email address from a "Name <addr>" string.
     /// e.g. "Claude Code <noreply@anthropic.com>" → "noreply@anthropic.com"
     pub fn extract_email_addr(email: &str) -> &str {
@@ -105,7 +129,14 @@ impl Agent {
         let basename_lower = basename.to_lowercase();
 
         KNOWN_AGENTS.iter().find(|agent| {
-            !agent.process_names.is_empty() && agent.process_names.iter().any(|&pn| basename_lower.contains(pn))
+            !agent.process_names.is_empty()
+                && agent.process_names.iter().any(|&pn| {
+                    if agent.exact_process_match {
+                        basename_lower == pn
+                    } else {
+                        basename_lower.contains(pn)
+                    }
+                })
         })
     }
 
