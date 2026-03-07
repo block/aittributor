@@ -4,9 +4,9 @@ output:
   - failure
 
 pre-commit:
-  parallel: true
   jobs:
     - name: fmt
+      stage_fixed: true
       run: just fmt
 pre-push:
   parallel: true
