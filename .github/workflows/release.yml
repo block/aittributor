@@ -35,7 +35,7 @@ jobs:
           mv "target/${TARGET}"/release/aittributor "${TARGET_PATH}"
           bzip2 -f9 "${TARGET_PATH}"
           echo "TARGET_PATH=${TARGET_PATH}.bz2" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: aittributor-${{ matrix.arch }}-${{ matrix.target-suffix }}
           path: ${{ steps.build.outputs.TARGET_PATH }}
@@ -52,7 +52,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: cashapp/activate-hermit@e49f5cb4dd64ff0b0b659d1d8df499595451155a # ratchet:cashapp/activate-hermit@v1
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # ratchet:actions/download-artifact@v7
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
         with:
           merge-multiple: true
       - run: just release-notes > release-notes.md
