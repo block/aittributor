@@ -23,7 +23,11 @@ pub fn append_trailers(commit_msg_file: &PathBuf, agent: &Agent, debug: bool) ->
     let content = fs::read_to_string(commit_msg_file)?;
 
     let addr = Agent::extract_email_addr(agent.email);
-    if content.contains("Co-authored-by:") && content.contains(addr) {
+    let content_lower = content.to_lowercase();
+    let has_co_author = content_lower.contains("co-authored-by:") && content_lower.contains(&addr.to_lowercase());
+    let has_ai_assisted = content_lower.contains("ai-assisted: true");
+
+    if has_co_author && has_ai_assisted {
         if debug {
             eprintln!("\n=== Git Command ===");
             eprintln!("Trailers already present, skipping git interpret-trailers");
@@ -31,28 +35,38 @@ pub fn append_trailers(commit_msg_file: &PathBuf, agent: &Agent, debug: bool) ->
         return Ok(());
     }
 
-    let co_authored = format!("Co-authored-by: {}", agent.email);
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("interpret-trailers").arg("--in-place");
 
-    if debug {
+    if !has_co_author {
+        let co_authored = format!("Co-authored-by: {}", agent.email);
+        if debug {
+            eprintln!("\n=== Git Command ===");
+            eprintln!(
+                "git interpret-trailers --in-place --trailer \"{}\" --if-exists addIfDifferent --trailer \"Ai-assisted: true\" \"{}\"",
+                co_authored,
+                commit_msg_file.display()
+            );
+        }
+        cmd.arg("--trailer")
+            .arg(&co_authored)
+            .arg("--if-exists")
+            .arg("addIfDifferent");
+    } else if debug {
         eprintln!("\n=== Git Command ===");
         eprintln!(
-            "git interpret-trailers --in-place --trailer \"{}\" --if-exists addIfDifferent --trailer \"Ai-assisted: true\" \"{}\"",
-            co_authored,
+            "git interpret-trailers --in-place --trailer \"Ai-assisted: true\" \"{}\"",
             commit_msg_file.display()
         );
     }
 
-    let output = std::process::Command::new("git")
-        .arg("interpret-trailers")
-        .arg("--in-place")
-        .arg("--trailer")
-        .arg(&co_authored)
-        .arg("--if-exists")
-        .arg("addIfDifferent")
-        .arg("--trailer")
-        .arg("Ai-assisted: true")
-        .arg(commit_msg_file)
-        .output()?;
+    if !has_ai_assisted {
+        cmd.arg("--trailer").arg("Ai-assisted: true");
+    }
+
+    cmd.arg(commit_msg_file);
+
+    let output = cmd.output()?;
 
     if !output.status.success() {
         return Err(std::io::Error::other(format!(

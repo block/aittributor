@@ -259,12 +259,45 @@ mod tests {
         append_trailers(&file.path().to_path_buf(), agent, false).unwrap();
 
         let content = fs::read_to_string(file.path()).unwrap();
+        let co_author_count = content.matches("noreply@anthropic.com").count();
+        assert_eq!(
+            co_author_count, 1,
+            "Should not add duplicate trailer for same email address, found {} occurrences",
+            co_author_count
+        );
+        assert!(
+            content.contains("Ai-assisted: true"),
+            "Should still add Ai-assisted trailer even when co-authored-by already exists"
+        );
+    }
+
+    #[test]
+    fn test_append_trailers_skips_existing_email_different_case() {
+        // The "Co-Authored-By" key can have varying capitalisation
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "Initial commit").unwrap();
+        writeln!(file).unwrap();
+        writeln!(
+            file,
+            "Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+        )
+        .unwrap();
+
+        let agent = Agent::find_by_name("claude").unwrap();
+        append_trailers(&file.path().to_path_buf(), agent, false).unwrap();
+
+        let content = fs::read_to_string(file.path()).unwrap();
         // Should NOT have added a second Co-authored-by for noreply@anthropic.com
         let co_author_count = content.matches("noreply@anthropic.com").count();
         assert_eq!(
             co_author_count, 1,
             "Should not add duplicate trailer for same email address, found {} occurrences",
             co_author_count
+        );
+        // But SHOULD have added Ai-assisted
+        assert!(
+            content.contains("Ai-assisted: true"),
+            "Should still add Ai-assisted trailer even when co-authored-by already exists"
         );
     }
 
