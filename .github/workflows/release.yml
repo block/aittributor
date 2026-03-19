@@ -61,3 +61,24 @@ jobs:
       - run: gh release create ${{ github.ref_name }} aittributor-*.bz2 --title ${{ github.ref_name }} --notes-file release-notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate token for tap release
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BLOCK_HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.BLOCK_HOMEBREW_TAP_PRIVATE_KEY }}
+          owner: block
+          repositories: homebrew-tap
+
+      - name: Trigger Formula Bump
+        run: |
+          gh workflow run bump-formula.yaml \
+            --repo block/homebrew-tap \
+            -f repo=block/aittributor \
+            -f formula=aittributor \
+            -f "tag=$TAG"
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+          TAG: ${{ github.ref_name }}
+          FILE_HASH: ${{ steps.generate_hash.outputs.file_hash }}
