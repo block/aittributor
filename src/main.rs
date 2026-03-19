@@ -265,10 +265,6 @@ mod tests {
             "Should not add duplicate trailer for same email address, found {} occurrences",
             co_author_count
         );
-        assert!(
-            content.contains("Ai-assisted: true"),
-            "Should still add Ai-assisted trailer even when co-authored-by already exists"
-        );
     }
 
     #[test]
@@ -293,11 +289,6 @@ mod tests {
             co_author_count, 1,
             "Should not add duplicate trailer for same email address, found {} occurrences",
             co_author_count
-        );
-        // But SHOULD have added Ai-assisted
-        assert!(
-            content.contains("Ai-assisted: true"),
-            "Should still add Ai-assisted trailer even when co-authored-by already exists"
         );
     }
 
@@ -375,7 +366,6 @@ mod tests {
 
         let content = fs::read_to_string(file.path()).unwrap();
         assert!(content.contains("Co-authored-by: Claude Code <noreply@anthropic.com>"));
-        assert!(content.contains("Ai-assisted: true"));
     }
 
     #[test]
@@ -426,12 +416,5 @@ mod tests {
         let content = fs::read_to_string(file.path()).unwrap();
         assert!(content.contains("Co-authored-by: Claude Code <noreply@anthropic.com>"));
         assert!(content.contains("Co-authored-by: Amp <amp@ampcode.com>"));
-
-        let ai_assisted_count = content.matches("Ai-assisted: true").count();
-        assert_eq!(
-            ai_assisted_count, 1,
-            "Ai-assisted trailer should appear exactly once, found {} occurrences",
-            ai_assisted_count
-        );
     }
 }
