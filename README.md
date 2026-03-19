@@ -11,11 +11,10 @@ It finds agents in four ways:
 
 Multiple agents can be attributed in a single commit. Results are deduplicated by email address.
 
-If any agents are found, it will append the following git trailers to the git commit:
+If any agents are found, it will append the following git trailer to the git commit:
 
 ```
 Co-authored-by: <email>
-Ai-assisted: true
 ```
 
 Emails are the official "agent" emails, where available, such as `Claude Code <noreply@anthropic.com>`.
