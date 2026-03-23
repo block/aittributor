@@ -25,6 +25,9 @@ jobs:
       - uses: cashapp/activate-hermit@e49f5cb4dd64ff0b0b659d1d8df499595451155a # ratchet:cashapp/activate-hermit@v1
         with:
           cache: true
+      - name: Set version from tag
+        shell: bash
+        run: sed -i'' -e "s/^version = .*/version = \"${GITHUB_REF_NAME#v}\"/" Cargo.toml
       - id: build
         shell: bash
         run: |
