@@ -67,7 +67,7 @@ jobs:
 
       - name: Generate token for tap release
         id: generate_token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         with:
           app-id: ${{ secrets.BLOCK_HOMEBREW_TAP_APP_ID }}
           private-key: ${{ secrets.BLOCK_HOMEBREW_TAP_PRIVATE_KEY }}
