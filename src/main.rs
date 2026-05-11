@@ -172,24 +172,13 @@ fn detect_agents(debug: bool) -> Vec<&'static Agent> {
     agents
 }
 
-fn dedup_agents(agents: Vec<&'static Agent>) -> Vec<&'static Agent> {
-    let mut seen = std::collections::HashSet::new();
-    agents
-        .into_iter()
-        .filter(|a| {
-            let addr = Agent::extract_email_addr(a.email);
-            seen.insert(addr)
-        })
-        .collect()
-}
-
 fn breadcrumb_fallback(debug: bool) -> Vec<&'static Agent> {
     let current_dir = std::env::current_dir().unwrap_or_default();
     let repo_path = find_git_root(&current_dir).unwrap_or(current_dir);
     breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, debug)
 }
 
-fn detect_and_merge(debug: bool) -> Vec<&'static Agent> {
+fn first_detected_agent(debug: bool) -> Option<&'static Agent> {
     let (bc_tx, bc_rx) = mpsc::channel();
     std::thread::spawn(move || {
         let _ = bc_tx.send(breadcrumb_fallback(debug));
@@ -201,27 +190,27 @@ fn detect_and_merge(debug: bool) -> Vec<&'static Agent> {
         agents.extend(bc_agents);
     }
 
-    dedup_agents(agents)
+    agents.into_iter().next()
 }
 
 fn run(cli: Cli) {
-    let agents = detect_and_merge(cli.debug);
+    let agent = first_detected_agent(cli.debug);
 
     let Some(commit_msg_file) = cli.commit_msg_file else {
-        if agents.is_empty() {
-            eprintln!("No agent found");
-            std::process::exit(1);
-        }
-        for agent in &agents {
-            println!("{}", agent.email);
+        match agent {
+            Some(a) => println!("{}", a.email),
+            None => {
+                eprintln!("No agent found");
+                std::process::exit(1);
+            }
         }
         return;
     };
 
-    for agent in &agents {
-        if let Err(e) = append_trailers(&commit_msg_file, agent, cli.debug) {
-            eprintln!("aittributor: failed to append trailers: {}", e);
-        }
+    if let Some(agent) = agent
+        && let Err(e) = append_trailers(&commit_msg_file, agent, cli.debug)
+    {
+        eprintln!("aittributor: failed to append trailers: {}", e);
     }
 }
 
@@ -290,24 +279,6 @@ mod tests {
             "Should not add duplicate trailer for same email address, found {} occurrences",
             co_author_count
         );
-    }
-
-    #[test]
-    fn test_dedup_agents_removes_duplicates() {
-        let claude = Agent::find_by_name("claude").unwrap();
-        let amp = Agent::find_by_name("amp").unwrap();
-        let agents = vec![claude, amp, claude];
-        let deduped = dedup_agents(agents);
-        assert_eq!(deduped.len(), 2);
-        assert_eq!(deduped[0].email, claude.email);
-        assert_eq!(deduped[1].email, amp.email);
-    }
-
-    #[test]
-    fn test_dedup_agents_empty() {
-        let agents: Vec<&'static Agent> = vec![];
-        let deduped = dedup_agents(agents);
-        assert!(deduped.is_empty());
     }
 
     #[test]

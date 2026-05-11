@@ -9,9 +9,7 @@ It finds agents in four ways:
 3. It walks up the process tree and checks all descendants of siblings at each level, looking for agents working in the same repository.
 4. It checks agent-specific state files ("breadcrumbs") to determine if an agent was recently active in this repo (e.g. `~/.claude/projects/`, `~/.codex/sessions/`, `~/.pi/agent/sessions/`).
 
-Multiple agents can be attributed in a single commit. Results are deduplicated by email address.
-
-If any agents are found, it will append the following git trailer to the git commit:
+At most one agent is attributed per commit: the first one found, in the order above. If an agent is found, it will append the following git trailer to the git commit:
 
 ```
 Co-authored-by: <email>
@@ -65,4 +63,4 @@ ln -s /usr/local/bin/aittributor .git/hooks/prepare-commit-msg
 
 **Agent-initiated commits are the most reliable.** Attribution is most accurate when the agent itself runs `git commit`. Manual commits while an agent session is open (or recently closed) are the main source of attribution that may not reflect actual code contribution.
 
-**Duplicate trailers when multiple writers are active.** Aittributor deduplicates by email address against both its own detected agents and any `Co-authored-by` trailers already in the commit message. However, if another process writes a trailer *after* aittributor runs, duplicates with different display names may appear.
+**Only one agent is attributed per commit.** When several agents are detected (e.g. a different agent is running elsewhere in the process tree, or a breadcrumb is found for another agent), only the first match is recorded. Aittributor still skips adding its trailer if a `Co-authored-by` for that email is already present in the commit message.
