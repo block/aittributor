@@ -159,8 +159,8 @@ fn detect_agents(debug: bool) -> Vec<&'static Agent> {
         eprintln!("  Repository path: {}", repo_path.display());
     }
     let system = System::new_with_specifics(
-        RefreshKind::new().with_processes(
-            ProcessRefreshKind::new()
+        RefreshKind::nothing().with_processes(
+            ProcessRefreshKind::nothing()
                 .with_cmd(UpdateKind::Always)
                 .with_cwd(UpdateKind::Always),
         ),
