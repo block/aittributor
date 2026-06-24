@@ -39,7 +39,7 @@ fn cwd_matches_repo(cwd: &str, repo_path: &Path) -> bool {
 
 /// Read the first few lines of a file looking for a "cwd" field that
 /// matches the repo path. Returns true on match.
-fn file_has_matching_cwd(path: &Path, repo_path: &Path, debug: bool) -> bool {
+fn file_has_matching_cwd(path: &Path, repo_path: &Path) -> bool {
     let file = match fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return false,
@@ -52,9 +52,6 @@ fn file_has_matching_cwd(path: &Path, repo_path: &Path, debug: bool) -> bool {
             Err(_) => break,
         };
         if let Some(cwd) = extract_cwd_from_json(&line) {
-            if debug {
-                eprintln!("    {} cwd: {}", path.display(), cwd);
-            }
             return cwd_matches_repo(cwd, repo_path);
         }
     }
@@ -64,7 +61,7 @@ fn file_has_matching_cwd(path: &Path, repo_path: &Path, debug: bool) -> bool {
 
 /// Walk nested subdirectories (any depth) looking for recent files whose
 /// first few lines contain a "cwd" field matching the repo path.
-fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: SystemTime, debug: bool) -> bool {
+fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: SystemTime) -> bool {
     let mut dirs_to_visit = vec![dir.to_path_buf()];
 
     while let Some(current) = dirs_to_visit.pop() {
@@ -81,7 +78,7 @@ fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: S
             if !has_extension(&path, ext) || !is_recent(&path, cutoff) {
                 continue;
             }
-            if file_has_matching_cwd(&path, repo_path, debug) {
+            if file_has_matching_cwd(&path, repo_path) {
                 return true;
             }
         }
@@ -90,7 +87,13 @@ fn find_session_file_with_cwd(dir: &Path, ext: &str, repo_path: &Path, cutoff: S
     false
 }
 
-fn check_source(agent: &'static Agent, repo_path: &Path, cutoff: SystemTime, debug: bool) -> bool {
+fn check_source(
+    agent: &'static Agent,
+    repo_path: &Path,
+    cutoff: SystemTime,
+    log: &mut Vec<String>,
+    debug: bool,
+) -> bool {
     let breadcrumb_dir = match agent.breadcrumb_dir {
         Some(d) => d,
         None => return false,
@@ -103,38 +106,41 @@ fn check_source(agent: &'static Agent, repo_path: &Path, cutoff: SystemTime, deb
     };
     let base = Path::new(&home).join(breadcrumb_dir);
 
-    if debug {
-        eprintln!("  {} breadcrumb dir: {}", agent.email, base.display());
-    }
-
+    // Only agents whose breadcrumb directory actually exists are worth
+    // reporting; skipping silently keeps the debug output focused.
     if !base.is_dir() {
-        if debug {
-            eprintln!("    Not found");
-        }
         return false;
     }
 
-    let matched = find_session_file_with_cwd(&base, breadcrumb_ext, repo_path, cutoff, debug);
+    let matched = find_session_file_with_cwd(&base, breadcrumb_ext, repo_path, cutoff);
 
-    if !matched && debug {
-        eprintln!("    No match for {}", agent.email);
+    if debug {
+        if matched {
+            log.push(format!("  found {} ({})", agent.email, base.display()));
+        } else {
+            log.push(format!("  scanned {} (no recent session in repo)", base.display()));
+        }
     }
 
     matched
 }
 
-pub fn detect_agents_from_breadcrumbs(repo_path: &Path, debug: bool) -> Vec<&'static Agent> {
+pub fn detect_agents_from_breadcrumbs(repo_path: &Path, log: &mut Vec<String>, debug: bool) -> Vec<&'static Agent> {
     let cutoff = SystemTime::now() - std::time::Duration::from_secs(CUTOFF_SECS);
     let mut agents = Vec::new();
 
     if debug {
-        eprintln!("\n=== Breadcrumb Fallback ===");
+        log.push("strategy: breadcrumb session files".to_string());
     }
 
     for agent in KNOWN_AGENTS {
-        if check_source(agent, repo_path, cutoff, debug) {
+        if check_source(agent, repo_path, cutoff, log, debug) {
             agents.push(agent);
         }
+    }
+
+    if debug && agents.is_empty() {
+        log.push("  no match".to_string());
     }
 
     agents
@@ -173,7 +179,7 @@ mod tests {
     #[test]
     fn test_no_breadcrumbs_returns_empty() {
         let dir = tempfile::TempDir::new().unwrap();
-        let agents = detect_agents_from_breadcrumbs(dir.path(), false);
+        let agents = detect_agents_from_breadcrumbs(dir.path(), &mut Vec::new(), false);
         assert!(agents.is_empty());
     }
 
@@ -184,8 +190,8 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, r#"{{"type":"session_meta","cwd":"/Users/foo/myrepo"}}"#).unwrap();
 
-        assert!(file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo"), false));
-        assert!(!file_has_matching_cwd(&path, Path::new("/Users/bar/other"), false));
+        assert!(file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo")));
+        assert!(!file_has_matching_cwd(&path, Path::new("/Users/bar/other")));
     }
 
     #[test]
@@ -196,8 +202,8 @@ mod tests {
         writeln!(f, r#"{{"type":"file-history-snapshot","messageId":"abc"}}"#).unwrap();
         writeln!(f, r#"{{"type":"user","cwd":"/Users/foo/myrepo"}}"#).unwrap();
 
-        assert!(file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo"), false));
-        assert!(!file_has_matching_cwd(&path, Path::new("/Users/bar/other"), false));
+        assert!(file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo")));
+        assert!(!file_has_matching_cwd(&path, Path::new("/Users/bar/other")));
     }
 
     #[test]
@@ -208,7 +214,7 @@ mod tests {
         writeln!(f, r#"{{"type":"something","data":"value"}}"#).unwrap();
         writeln!(f, r#"{{"type":"other","data":"value"}}"#).unwrap();
 
-        assert!(!file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo"), false));
+        assert!(!file_has_matching_cwd(&path, Path::new("/Users/foo/myrepo")));
     }
 
     #[test]
@@ -229,8 +235,7 @@ mod tests {
             dir.path(),
             "jsonl",
             Path::new("/Users/foo/myrepo"),
-            cutoff,
-            false
+            cutoff
         ));
 
         // Non-matching repo
@@ -238,8 +243,7 @@ mod tests {
             dir.path(),
             "jsonl",
             Path::new("/Users/bar/other"),
-            cutoff,
-            false
+            cutoff
         ));
     }
 
@@ -257,8 +261,7 @@ mod tests {
             dir.path(),
             "jsonl",
             Path::new("/Users/foo/aittributor"),
-            cutoff,
-            false
+            cutoff
         ));
     }
 
@@ -281,8 +284,7 @@ mod tests {
             dir.path(),
             "jsonl",
             Path::new("/Users/foo/monorepo"),
-            cutoff,
-            false
+            cutoff
         ));
     }
 }

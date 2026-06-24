@@ -3,6 +3,7 @@ mod breadcrumbs;
 mod git;
 
 use clap::Parser;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -31,19 +32,75 @@ struct Cli {
     debug: bool,
 }
 
-fn walk_ancestry(system: &System, debug: bool) -> Vec<&'static Agent> {
-    let mut current_pid = Pid::from_u32(std::process::id());
-    let mut agents = Vec::new();
+/// Accumulates debug information while scanning a process tree.
+///
+/// All tracking is skipped unless `debug` is set, so the normal
+/// (non-debug) code path stays allocation-free.
+struct ScanReport {
+    debug: bool,
+    scanned: HashSet<Pid>,
+    findings: Vec<String>,
+    /// Emails already reported, to avoid duplicate "found" lines when the
+    /// same agent shows up under multiple siblings.
+    logged: HashSet<&'static str>,
+}
 
-    if debug {
-        eprintln!("\nWalking ancestry from PID {}...", current_pid);
+impl ScanReport {
+    fn new(debug: bool) -> Self {
+        Self {
+            debug,
+            scanned: HashSet::new(),
+            findings: Vec::new(),
+            logged: HashSet::new(),
+        }
     }
 
-    while let Some(process) = system.process(current_pid) {
-        if debug {
-            eprintln!("  PID {}: {:?}", current_pid, process.name());
+    fn mark_scanned(&mut self, pid: Pid) {
+        if self.debug {
+            self.scanned.insert(pid);
         }
-        if let Some(agent) = Agent::find_for_process(process, debug) {
+    }
+
+    fn record_match(&mut self, agent: &'static Agent, pid: Pid, name: &str) {
+        // `insert` returns false if the email was already recorded.
+        if self.debug && self.logged.insert(agent.email) {
+            self.findings.push(format!(
+                "  found {} (pid {}, process \"{}\", cwd matches repo)",
+                agent.email, pid, name
+            ));
+        }
+    }
+
+    fn flush_into(self, log: &mut Vec<String>) {
+        if !self.debug {
+            return;
+        }
+        log.push(format!("  scanned {} processes", self.scanned.len()));
+        if self.findings.is_empty() {
+            log.push("  no match".to_string());
+        } else {
+            log.extend(self.findings);
+        }
+    }
+}
+
+fn walk_ancestry(system: &System, log: &mut Vec<String>, debug: bool) -> Vec<&'static Agent> {
+    let mut current_pid = Pid::from_u32(std::process::id());
+    let mut agents = Vec::new();
+    let mut walked = 0usize;
+    let mut findings = Vec::new();
+
+    while let Some(process) = system.process(current_pid) {
+        walked += 1;
+        if let Some(agent) = Agent::find_for_process(process) {
+            if debug {
+                findings.push(format!(
+                    "  found {} (pid {}, process \"{}\")",
+                    agent.email,
+                    current_pid,
+                    process.name().to_string_lossy()
+                ));
+            }
             agents.push(agent);
         }
 
@@ -55,12 +112,26 @@ fn walk_ancestry(system: &System, debug: bool) -> Vec<&'static Agent> {
         }
     }
 
+    if debug {
+        log.push(format!("  walked {} processes", walked));
+        if findings.is_empty() {
+            log.push("  no match".to_string());
+        } else {
+            log.extend(findings);
+        }
+    }
+
     agents
 }
 
-fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug: bool) -> Vec<&'static Agent> {
-    let mut queue = std::collections::VecDeque::new();
-    let mut visited = std::collections::HashSet::new();
+fn check_process_tree(
+    system: &System,
+    root_pid: Pid,
+    repo_path: &PathBuf,
+    report: &mut ScanReport,
+) -> Vec<&'static Agent> {
+    let mut queue = VecDeque::new();
+    let mut visited = HashSet::new();
     let mut agents = Vec::new();
 
     queue.push_back(root_pid);
@@ -75,17 +146,13 @@ fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug
             None => continue,
         };
 
-        if debug {
-            eprintln!("    Checking PID {}: {:?}", pid, process.name());
-        }
+        report.mark_scanned(pid);
 
-        if let Some(agent) = Agent::find_for_process(process, debug)
+        if let Some(agent) = Agent::find_for_process(process)
             && let Some(cwd) = process.cwd()
             && cwd.starts_with(repo_path)
         {
-            if debug {
-                eprintln!("    Found agent in tree with matching cwd");
-            }
+            report.record_match(agent, pid, &process.name().to_string_lossy());
             agents.push(agent);
         }
 
@@ -99,14 +166,16 @@ fn check_process_tree(system: &System, root_pid: Pid, repo_path: &PathBuf, debug
     agents
 }
 
-fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bool) -> Vec<&'static Agent> {
+fn walk_ancestry_and_descendants(
+    system: &System,
+    repo_path: &PathBuf,
+    log: &mut Vec<String>,
+    debug: bool,
+) -> Vec<&'static Agent> {
     let mut current_pid = Pid::from_u32(std::process::id());
-    let mut checked_ancestors = std::collections::HashSet::new();
+    let mut checked_ancestors = HashSet::new();
     let mut agents = Vec::new();
-
-    if debug {
-        eprintln!("\nWalking ancestry and descendants...");
-    }
+    let mut report = ScanReport::new(debug);
 
     while let Some(process) = system.process(current_pid) {
         if !checked_ancestors.insert(current_pid) {
@@ -118,36 +187,46 @@ fn walk_ancestry_and_descendants(system: &System, repo_path: &PathBuf, debug: bo
             _ => break,
         };
 
-        if debug {
-            eprintln!("  Checking siblings of PID {} (parent: {})", current_pid, parent_pid);
-        }
-
         for sibling in system.processes().values() {
             if sibling.parent() != Some(parent_pid) {
                 continue;
             }
 
-            agents.extend(check_process_tree(system, sibling.pid(), repo_path, debug));
+            agents.extend(check_process_tree(system, sibling.pid(), repo_path, &mut report));
         }
 
         current_pid = parent_pid;
     }
 
+    report.flush_into(log);
+
     agents
 }
 
-fn detect_agents(debug: bool) -> Vec<&'static Agent> {
+fn detect_agents(log: &mut Vec<String>, debug: bool) -> Vec<&'static Agent> {
     let mut agents = Vec::new();
 
     if debug {
-        eprintln!("=== Agent Detection Debug ===");
-        eprintln!("\nChecking environment variables...");
+        log.push("strategy: environment variables".to_string());
     }
-    if let Some(agent) = Agent::find_by_env() {
-        if debug {
-            eprintln!("  ✓ Found agent via env: {}", agent.email);
+    match Agent::find_by_env() {
+        Some(agent) => {
+            if debug {
+                let vars = agent
+                    .env_vars
+                    .iter()
+                    .map(|(key, _)| *key)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                log.push(format!("  found {} (env: {})", agent.email, vars));
+            }
+            agents.push(agent);
         }
-        agents.push(agent);
+        None => {
+            if debug {
+                log.push("  no match".to_string());
+            }
+        }
     }
 
     let current_dir = match std::env::current_dir() {
@@ -156,8 +235,10 @@ fn detect_agents(debug: bool) -> Vec<&'static Agent> {
     };
     let repo_path = find_git_root(&current_dir).unwrap_or(current_dir);
     if debug {
-        eprintln!("  Repository path: {}", repo_path.display());
+        log.push(format!("repository: {}", repo_path.display()));
+        log.push("strategy: process ancestry".to_string());
     }
+
     let system = System::new_with_specifics(
         RefreshKind::nothing().with_processes(
             ProcessRefreshKind::nothing()
@@ -166,31 +247,55 @@ fn detect_agents(debug: bool) -> Vec<&'static Agent> {
         ),
     );
 
-    agents.extend(walk_ancestry(&system, debug));
-    agents.extend(walk_ancestry_and_descendants(&system, &repo_path, debug));
+    agents.extend(walk_ancestry(&system, log, debug));
+
+    if debug {
+        log.push("strategy: process tree (siblings and descendants)".to_string());
+    }
+    agents.extend(walk_ancestry_and_descendants(&system, &repo_path, log, debug));
 
     agents
 }
 
-fn breadcrumb_fallback(debug: bool) -> Vec<&'static Agent> {
+fn breadcrumb_fallback(log: &mut Vec<String>, debug: bool) -> Vec<&'static Agent> {
     let current_dir = std::env::current_dir().unwrap_or_default();
     let repo_path = find_git_root(&current_dir).unwrap_or(current_dir);
-    breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, debug)
+    breadcrumbs::detect_agents_from_breadcrumbs(&repo_path, log, debug)
 }
 
 fn first_detected_agent(debug: bool) -> Option<&'static Agent> {
+    // The breadcrumb scan runs on a separate thread, so each strategy buffers
+    // its debug output into a `Vec<String>` instead of printing directly. We
+    // print everything in a fixed order afterwards to keep the report readable.
     let (bc_tx, bc_rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = bc_tx.send(breadcrumb_fallback(debug));
+        let mut bc_log = Vec::new();
+        let bc_agents = breadcrumb_fallback(&mut bc_log, debug);
+        let _ = bc_tx.send((bc_agents, bc_log));
     });
 
-    let mut agents = detect_agents(debug);
+    let mut log = Vec::new();
+    let mut agents = detect_agents(&mut log, debug);
 
-    if let Ok(bc_agents) = bc_rx.recv() {
+    if let Ok((bc_agents, bc_log)) = bc_rx.recv() {
+        log.extend(bc_log);
         agents.extend(bc_agents);
     }
 
-    agents.into_iter().next()
+    let chosen = agents.into_iter().next();
+
+    if debug {
+        eprintln!("=== aittributor detection ===");
+        for line in &log {
+            eprintln!("{}", line);
+        }
+        match chosen {
+            Some(agent) => eprintln!("\noutcome: attributing to {}", agent.email),
+            None => eprintln!("\noutcome: no agent detected"),
+        }
+    }
+
+    chosen
 }
 
 fn run(cli: Cli) {

@@ -148,28 +148,16 @@ impl Agent {
         })
     }
 
-    pub fn find_for_process(process: &sysinfo::Process, debug: bool) -> Option<&'static Agent> {
+    pub fn find_for_process(process: &sysinfo::Process) -> Option<&'static Agent> {
         let name = process.name().to_string_lossy();
-        if debug {
-            eprintln!("      Checking process name: {}", name);
-        }
         if let Some(agent) = Self::find_by_name(&name) {
-            if debug {
-                eprintln!("        ✓ Matched agent: {}", agent.email);
-            }
             return Some(agent);
         }
 
         // Check basename(argv[0])
         if let Some(arg0) = process.cmd().first() {
             let arg0_str = arg0.to_string_lossy();
-            if debug {
-                eprintln!("      Checking basename(argv[0]): {}", arg0_str);
-            }
             if let Some(agent) = Self::find_by_name(&arg0_str) {
-                if debug {
-                    eprintln!("        ✓ Matched agent: {}", agent.email);
-                }
                 return Some(agent);
             }
         }
@@ -180,13 +168,7 @@ impl Agent {
             !arg_str.starts_with('-')
         }) {
             let arg_str = arg.to_string_lossy();
-            if debug {
-                eprintln!("      Checking first non-flag arg from argv[1:]: {}", arg_str);
-            }
             if let Some(agent) = Self::find_by_name(&arg_str) {
-                if debug {
-                    eprintln!("        ✓ Matched agent: {}", agent.email);
-                }
                 return Some(agent);
             }
         }
