@@ -34,10 +34,7 @@ pub fn find_git_root(start_path: &Path) -> Option<PathBuf> {
             return Some(current);
         }
 
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return None,
-        }
+        current = current.parent()?.to_path_buf();
     }
 }
 

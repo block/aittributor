@@ -2,6 +2,8 @@
 
 It does this by matching process names against known agents, and working directory against the current git repository.
 
+Process detection recognizes agent executables and interpreter script paths, but ignores inline shell commands (`sh -c`, `bash -lc`, etc.). A shell command mentioning `goose-example`, for example, does not identify that shell as Goose.
+
 It finds agents in four ways:
 
 1. It checks for agent-specific environment variables.

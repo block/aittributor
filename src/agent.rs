@@ -1,3 +1,4 @@
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 pub struct Agent {
@@ -149,21 +150,48 @@ impl Agent {
     }
 
     pub fn find_for_process(process: &sysinfo::Process) -> Option<&'static Agent> {
-        let name = process.name().to_string_lossy();
+        Self::find_for_command(process.name(), process.cmd())
+    }
+
+    fn find_for_command(name: &OsStr, command: &[OsString]) -> Option<&'static Agent> {
+        let name = name.to_string_lossy();
         if let Some(agent) = Self::find_by_name(&name) {
             return Some(agent);
         }
 
         // Check basename(argv[0])
-        if let Some(arg0) = process.cmd().first() {
+        if let Some(arg0) = command.first() {
             let arg0_str = arg0.to_string_lossy();
             if let Some(agent) = Self::find_by_name(&arg0_str) {
                 return Some(agent);
             }
+
+            // Login shells prefix argv[0] with '-'; shell -c arguments contain code.
+            let executable = Path::new(arg0)
+                .file_name()
+                .and_then(OsStr::to_str)
+                .map(|name| name.strip_prefix('-').unwrap_or(name));
+            if matches!(
+                executable,
+                Some("sh" | "bash" | "dash" | "ash" | "zsh" | "ksh" | "fish" | "csh" | "tcsh")
+            ) && command
+                .iter()
+                .skip(1)
+                .map(|arg| arg.to_string_lossy())
+                .take_while(|arg| arg.starts_with('-') && arg != "--")
+                .any(|arg| {
+                    arg == "--command"
+                        || arg
+                            .strip_prefix('-')
+                            .is_some_and(|flags| !flags.starts_with('-') && flags.contains('c'))
+                })
+            {
+                return None;
+            }
         }
 
         // Check first basename(argv[1:]) that doesn't start with '-'
-        if let Some(arg) = process.cmd().iter().skip(1).find(|arg| {
+        if let Some(arg) = command.iter().skip(1).find(|arg| {
             let arg_str = arg.to_string_lossy();
             !arg_str.starts_with('-')
         }) {
@@ -174,5 +202,82 @@ impl Agent {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use sysinfo::{ProcessRefreshKind, RefreshKind, System, UpdateKind};
+
+    #[test]
+    fn shell_command_text_does_not_identify_an_agent() {
+        for (shell, flag) in [("sh", "-c"), ("bash", "-c"), ("bash", "-lc")] {
+            let mut child = Command::new(shell)
+                .args([
+                    flag,
+                    "printf ready; read -r ignored # git commit -m 'chore: deploy goose-example'",
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            // Wait until the shell has started and is blocked on stdin.
+            child.stdout.as_mut().unwrap().read_exact(&mut [0; 5]).unwrap();
+            let system = System::new_with_specifics(
+                RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always)),
+            );
+            let process = system.process(sysinfo::Pid::from_u32(child.id())).unwrap();
+            let detected = Agent::find_for_process(process).map(|agent| agent.email);
+            child.kill().unwrap();
+            child.wait().unwrap();
+
+            assert_eq!(detected, None, "{shell} {flag} was mistaken for an agent");
+        }
+    }
+
+    #[test]
+    fn interpreter_scripts_still_identify_agents() {
+        for (name, args, email) in [
+            (
+                "node",
+                vec!["/usr/bin/node", "/opt/codex-acp.js"],
+                "Codex <noreply@openai.com>",
+            ),
+            (
+                "python3",
+                vec!["python3", "-u", "/opt/goose.py"],
+                "Goose <opensource@block.xyz>",
+            ),
+            ("bash", vec!["bash", "/opt/codex.sh"], "Codex <noreply@openai.com>"),
+            (
+                "codex",
+                vec!["codex", "exec", "goose-example"],
+                "Codex <noreply@openai.com>",
+            ),
+        ] {
+            let command: Vec<OsString> = args.into_iter().map(OsString::from).collect();
+            assert_eq!(
+                Agent::find_for_command(OsStr::new(name), &command).map(|agent| agent.email),
+                Some(email),
+                "failed to identify {command:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn shell_inline_command_flags_do_not_identify_agents() {
+        for (name, executable, flag) in [
+            ("bash", "bash", "-lc"),
+            ("zsh", "zsh", "-ic"),
+            ("fish", "fish", "--command"),
+            ("bash", "-bash", "-c"),
+            ("zsh", "-zsh", "-ic"),
+        ] {
+            let command = [executable, flag, "git commit -m 'deploy goose-example'"].map(OsString::from);
+            assert!(Agent::find_for_command(OsStr::new(name), &command).is_none());
+        }
     }
 }
