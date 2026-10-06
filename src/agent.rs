@@ -166,8 +166,11 @@ impl Agent {
                 return Some(agent);
             }
 
-            // Shell -c arguments contain code, not the name of an agent script.
-            let executable = Path::new(arg0).file_name().and_then(OsStr::to_str);
+            // Login shells prefix argv[0] with '-'; shell -c arguments contain code.
+            let executable = Path::new(arg0)
+                .file_name()
+                .and_then(OsStr::to_str)
+                .map(|name| name.strip_prefix('-').unwrap_or(name));
             if matches!(
                 executable,
                 Some("sh" | "bash" | "dash" | "ash" | "zsh" | "ksh" | "fish" | "csh" | "tcsh")
@@ -266,8 +269,14 @@ mod tests {
 
     #[test]
     fn shell_inline_command_flags_do_not_identify_agents() {
-        for (name, flag) in [("bash", "-lc"), ("zsh", "-ic"), ("fish", "--command")] {
-            let command = [name, flag, "git commit -m 'deploy goose-example'"].map(OsString::from);
+        for (name, executable, flag) in [
+            ("bash", "bash", "-lc"),
+            ("zsh", "zsh", "-ic"),
+            ("fish", "fish", "--command"),
+            ("bash", "-bash", "-c"),
+            ("zsh", "-zsh", "-ic"),
+        ] {
+            let command = [executable, flag, "git commit -m 'deploy goose-example'"].map(OsString::from);
             assert!(Agent::find_for_command(OsStr::new(name), &command).is_none());
         }
     }
